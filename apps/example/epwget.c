@@ -24,12 +24,14 @@
 #include "http_parsing.h"
 #include "netlib.h"
 #include "debug.h"
+//modified by liudong16
+#include "/home/liudong16/mtcp_ttt/mtcp/src/include/ctx_c.h"
 
 #define MAX_CPUS 16
 
 #define MAX_URL_LEN 128
 #define MAX_FILE_LEN 128
-#define HTTP_HEADER_LEN 1024
+//#define HTTP_HEADER_LEN 1024
 
 #define IP_RANGE 1
 #define MAX_IP_STR_LEN 16
@@ -60,7 +62,9 @@ static mctx_t g_mctx[MAX_CPUS];
 static int done[MAX_CPUS];
 /*----------------------------------------------------------------------------*/
 static int num_cores;
-static int core_limit;
+//modified by liudong16
+int core_limit;
+//static int core_limit;
 /*----------------------------------------------------------------------------*/
 static int fio = FALSE;
 static char outfile[MAX_FILE_LEN + 1];
@@ -78,6 +82,8 @@ static int concurrency;
 static int max_fds;
 static int response_size = 0;
 /*----------------------------------------------------------------------------*/
+//modified by liudong16
+/*
 struct wget_stat
 {
 	uint64_t waits;
@@ -93,7 +99,9 @@ struct wget_stat
 	uint64_t sum_resp_time;
 	uint64_t max_resp_time;
 };
+*/
 /*----------------------------------------------------------------------------*/
+/*
 struct thread_context
 {
 	int core;
@@ -112,7 +120,9 @@ struct thread_context
 	struct wget_stat stat;
 };
 typedef struct thread_context* thread_context_t;
+*/
 /*----------------------------------------------------------------------------*/
+/*
 struct wget_vars
 {
 	int request_sent;
@@ -130,9 +140,14 @@ struct wget_vars
 	
 	int fd;
 };
+*/
 /*----------------------------------------------------------------------------*/
 static struct thread_context *g_ctx[MAX_CPUS];
 static struct wget_stat *g_stat[MAX_CPUS];
+//modified by liudong16
+pthread_t thread_ids[MAX_CPUS];
+thread_context_t g_ctxc[MAX_CPUS];
+static int turn = 0;
 /*----------------------------------------------------------------------------*/
 thread_context_t 
 CreateContext(int core)
@@ -190,12 +205,17 @@ CreateConnection(thread_context_t ctx)
 	addr.sin_addr.s_addr = daddr;
 	addr.sin_port = dport;
 	
-	ret = mtcp_connect(mctx, sockid, 
+	//modified by liudong16
+	//ret = mtcp_connect(mctx, sockid, 
+	//		(struct sockaddr *)&addr, sizeof(struct sockaddr_in));
+	ret = connect(sockid, 
 			(struct sockaddr *)&addr, sizeof(struct sockaddr_in));
 	if (ret < 0) {
 		if (errno != EINPROGRESS) {
 			perror("mtcp_connect");
-			mtcp_close(mctx, sockid);
+			//modified by liudong16
+			//mtcp_close(mctx, sockid);
+			close1(sockid);
 			return -1;
 		}
 	}
@@ -215,7 +235,9 @@ static inline void
 CloseConnection(thread_context_t ctx, int sockid)
 {
 	mtcp_epoll_ctl(ctx->mctx, ctx->ep, MTCP_EPOLL_CTL_DEL, sockid, NULL);
-	mtcp_close(ctx->mctx, sockid);
+	//modified by liudong16
+	//mtcp_close(ctx->mctx, sockid);
+	close1(sockid);
 	ctx->pending--;
 	ctx->done++;
 	assert(ctx->pending >= 0);
@@ -247,8 +269,10 @@ SendHTTPRequest(thread_context_t ctx, int sockid, struct wget_vars *wv)
 			"Connection: Close\r\n\r\n", 
 			url, host);
 	len = strlen(request);
-
-	wr = mtcp_write(ctx->mctx, sockid, request, len);
+	
+	//modified by liudong16
+	//wr = mtcp_write(ctx->mctx, sockid, request, len);
+	wr = write1(sockid, request, len);
 	if (wr < len) {
 		TRACE_ERROR("Socket %d: Sending HTTP request failed. "
 				"try: %d, sent: %d\n", sockid, len, wr);
@@ -319,14 +343,17 @@ DownloadComplete(thread_context_t ctx, int sockid, struct wget_vars *wv)
 static inline int
 HandleReadEvent(thread_context_t ctx, int sockid, struct wget_vars *wv)
 {
-	mctx_t mctx = ctx->mctx;
+	//modified by liudong16
+	//mctx_t mctx = ctx->mctx;
 	char buf[BUF_SIZE];
 	char *pbuf;
 	int rd, copy_len;
 
 	rd = 1;
 	while (rd > 0) {
-		rd = mtcp_read(mctx, sockid, buf, BUF_SIZE);
+		//modified by liudong16
+		//rd = mtcp_read(mctx, sockid, buf, BUF_SIZE);
+		rd = read1(sockid, buf, BUF_SIZE);
 		if (rd <= 0)
 			break;
 		ctx->stat.reads += rd;
@@ -539,6 +566,11 @@ RunWgetMain(void *arg)
 	mtcp_core_affinitize(core);
 
 	ctx = CreateContext(core);
+	//mofified by liudong16
+	g_ctxc[turn] = ctx;
+	thread_ids[turn] = pthread_self();
+	turn++;
+
 	if (!ctx) {
 		return NULL;
 	}

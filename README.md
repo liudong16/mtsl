@@ -26,5 +26,6 @@ Please refer to our article-mTSL: Making mTCP Stack Transparent to Network Appli
 4. Run the applications:
     ```
     LD_PRELOAD=../../mtsl/lib/libmtsl.so ./epserver -p /test_txt -f epserver.conf -N 8
+    LD_PRELOAD=../../mtsl/lib/libmtsl.so ./epwget 10.0.0.5/test.txt 100000000 -N 4 -c 8000
     ```
 
